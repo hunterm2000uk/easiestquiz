@@ -13,6 +13,7 @@ import { Label } from '@/components/ui/label';
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Separator } from "@/components/ui/separator"; // Import Separator
 
 const POINTS_PER_CORRECT = 10;
 const PERFECTION_BONUS = 50;
@@ -57,12 +58,9 @@ export default function Quiz() {
         if (fetchedQuestions.length === 0) {
             setError("No questions were loaded. Please try again later.");
         } else {
-             // Shuffle options client-side to avoid hydration issues
-             const questionsWithOptionsShuffled = fetchedQuestions.map(q => ({
-                ...q,
-                options: [...q.options].sort(() => Math.random() - 0.5)
-            }));
-            setQuestions(questionsWithOptionsShuffled);
+             // Shuffle options client-side to avoid hydration issues if necessary
+             // For now, assuming service shuffle is sufficient or called client-side
+            setQuestions(fetchedQuestions);
             setStartTime(Date.now()); // Record start time *after* questions are set
         }
       } catch (err) {
