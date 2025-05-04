@@ -6,7 +6,6 @@ import { cn } from '@/lib/utils';
 import { CheckCircle, XCircle, AlertCircle } from 'lucide-react';
 import * as React from 'react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
@@ -40,7 +39,6 @@ export default function Quiz() {
                 options: [...q.options].sort(() => Math.random() - 0.5)
             }));
             setQuestions(questionsWithOptionsShuffled);
-            // console.log("Questions set in state:", questionsWithOptionsShuffled.map(q => ({ q: q.question, o: q.options }))); // Debug log
         }
       } catch (err) {
         console.error('Failed to fetch questions:', err);
@@ -55,32 +53,28 @@ export default function Quiz() {
   const handleAnswerSelect = (answer: string | number) => {
     if (showFeedback) return; // Don't allow changing answer after submission
     setSelectedAnswer(answer);
-    // console.log("Answer selected:", answer); // Debug log
-  };
 
-  const handleSubmit = () => {
-    if (selectedAnswer === null) return;
-
+    // Automatic submission and progression logic
     const currentQuestion = questions[currentQuestionIndex];
-    const correct = selectedAnswer === currentQuestion.correct_answer;
+    const correct = answer === currentQuestion.correct_answer;
 
     setIsCorrect(correct);
     if (correct) {
       setScore(score + 1);
     }
     setShowFeedback(true);
-    // console.log("Submitted:", selectedAnswer, "Correct:", correct); // Debug log
-  };
 
-  const handleNextQuestion = () => {
-    setShowFeedback(false);
-    setIsCorrect(null);
-    setSelectedAnswer(null);
-    if (currentQuestionIndex < questions.length - 1) {
-      setCurrentQuestionIndex(currentQuestionIndex + 1);
-    } else {
-      setQuizComplete(true);
-    }
+    // Delay before moving to the next question or completing the quiz
+    setTimeout(() => {
+      if (currentQuestionIndex < questions.length - 1) {
+        setCurrentQuestionIndex(currentQuestionIndex + 1);
+        setShowFeedback(false);
+        setIsCorrect(null);
+        setSelectedAnswer(null);
+      } else {
+        setQuizComplete(true);
+      }
+    }, 1500); // Delay for 1.5 seconds
   };
 
   const handleRestartQuiz = () => {
@@ -179,9 +173,6 @@ export default function Quiz() {
   const currentQuestion = questions[currentQuestionIndex];
   const progress = ((currentQuestionIndex + 1) / questions.length) * 100;
 
-  // console.log("Rendering Question:", currentQuestionIndex, currentQuestion?.question); // Debug log
-  // console.log("Options for current question:", currentQuestion?.options); // Debug log
-
 
   return (
     <Card className="w-full max-w-2xl mx-auto p-4 md:p-8 shadow-xl">
@@ -238,26 +229,6 @@ export default function Quiz() {
             );
           })}
         </RadioGroup>
-
-        <div className="flex justify-center mt-6">
-          {!showFeedback ? (
-            <Button onClick={handleSubmit} disabled={selectedAnswer === null}>
-              Submit Answer
-            </Button>
-          ) : (
-            <Button onClick={handleNextQuestion}>
-              {currentQuestionIndex < questions.length - 1 ? 'Next Question' : 'Finish Quiz'}
-            </Button>
-          )}
-        </div>
-
-        {/* Optional: Show immediate feedback message */}
-        {/* {showFeedback && isCorrect !== null && (
-          <Alert variant={isCorrect ? 'success' : 'destructive'} className="mt-4">
-             {isCorrect ? <CheckCircle className="h-4 w-4"/> : <XCircle className="h-4 w-4"/>}
-            <AlertTitle>{isCorrect ? 'Correct!' : 'Incorrect'}</AlertTitle>
-          </Alert>
-        )} */}
       </CardContent>
     </Card>
   );
