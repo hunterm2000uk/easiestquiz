@@ -1,3 +1,4 @@
+
 'use client';
 
 import type { QuizQuestion } from '@/lib/quizData';
@@ -13,7 +14,7 @@ import { Label } from '@/components/ui/label';
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Separator } from "@/components/ui/separator"; // Import Separator
+import { Separator } from "@/components/ui/separator";
 
 const POINTS_PER_CORRECT = 10;
 const PERFECTION_BONUS = 50;
@@ -24,7 +25,7 @@ export default function Quiz() {
   const [questions, setQuestions] = React.useState<QuizQuestion[]>([]);
   const [currentQuestionIndex, setCurrentQuestionIndex] = React.useState(0);
   const [selectedAnswer, setSelectedAnswer] = React.useState<string | number | null>(null);
-  const [correctAnswersCount, setCorrectAnswersCount] = React.useState(0); // Renamed from score
+  const [correctAnswersCount, setCorrectAnswersCount] = React.useState(0);
   const [showFeedback, setShowFeedback] = React.useState(false);
   const [isCorrect, setIsCorrect] = React.useState<boolean | null>(null);
   const [isLoading, setIsLoading] = React.useState(true);
@@ -32,6 +33,7 @@ export default function Quiz() {
   const [quizComplete, setQuizComplete] = React.useState(false);
   const [startTime, setStartTime] = React.useState<number | null>(null);
   const [endTime, setEndTime] = React.useState<number | null>(null);
+  const [elapsedSeconds, setElapsedSeconds] = React.useState(0); // State for elapsed time display
   const [finalScore, setFinalScore] = React.useState<{
       baseScore: number;
       timeScore: number;
@@ -39,6 +41,16 @@ export default function Quiz() {
       totalScore: number;
       elapsedTime: number;
   } | null>(null);
+
+  const timerIntervalRef = React.useRef<NodeJS.Timeout | null>(null); // Ref to hold interval ID
+
+  // Format time in MM:SS
+  const formatTime = (seconds: number): string => {
+      const minutes = Math.floor(seconds / 60);
+      const remainingSeconds = seconds % 60;
+      return `${minutes.toString().padStart(2, '0')}:${remainingSeconds.toString().padStart(2, '0')}`;
+  };
+
 
   const loadQuestions = React.useCallback(async () => {
       try {
@@ -53,6 +65,12 @@ export default function Quiz() {
         setStartTime(null);
         setEndTime(null);
         setFinalScore(null);
+        setElapsedSeconds(0); // Reset elapsed time
+        if (timerIntervalRef.current) { // Clear any existing timer
+            clearInterval(timerIntervalRef.current);
+            timerIntervalRef.current = null;
+        }
+
 
         const fetchedQuestions = await fetchDailyQuizQuestions(10); // Fetch 10 questions
         if (fetchedQuestions.length === 0) {
@@ -75,17 +93,40 @@ export default function Quiz() {
     loadQuestions();
   }, [loadQuestions]); // Run once on mount
 
+  // Timer Effect
+  React.useEffect(() => {
+      if (startTime && !quizComplete) {
+          timerIntervalRef.current = setInterval(() => {
+              setElapsedSeconds(prevSeconds => prevSeconds + 1);
+          }, 1000);
+      } else if (quizComplete && timerIntervalRef.current) {
+          clearInterval(timerIntervalRef.current); // Clear interval when quiz completes
+          timerIntervalRef.current = null;
+      }
+
+      // Cleanup function to clear interval on component unmount or when dependencies change
+      return () => {
+          if (timerIntervalRef.current) {
+              clearInterval(timerIntervalRef.current);
+          }
+      };
+  }, [startTime, quizComplete]); // Rerun effect if startTime or quizComplete changes
+
+
   const calculateScore = React.useCallback(() => {
       if (!startTime || !questions.length) return;
 
       const currentEndTime = Date.now();
       setEndTime(currentEndTime);
 
-      const elapsedTimeSeconds = Math.round((currentEndTime - startTime) / 1000);
+       // Use elapsedSeconds state directly for consistency, though recalculating is also fine
+       const finalElapsedTime = elapsedSeconds; // Use state value at the time of completion
+       // Or: const finalElapsedTime = Math.round((currentEndTime - startTime) / 1000);
+
       const baseScore = correctAnswersCount * POINTS_PER_CORRECT;
 
       const maxTimePoints = questions.length * MAX_TIME_POINTS_FACTOR;
-      const timeScoreRaw = maxTimePoints - (elapsedTimeSeconds * TIME_DEDUCTION_PER_SECOND);
+      const timeScoreRaw = maxTimePoints - (finalElapsedTime * TIME_DEDUCTION_PER_SECOND);
       const timeScore = Math.max(0, Math.round(timeScoreRaw)); // Ensure time score isn't negative
 
       const isPerfect = correctAnswersCount === questions.length;
@@ -98,10 +139,10 @@ export default function Quiz() {
           timeScore,
           perfectionBonus,
           totalScore,
-          elapsedTime: elapsedTimeSeconds,
+          elapsedTime: finalElapsedTime,
       });
        setQuizComplete(true); // Set quiz complete *after* calculation
-  }, [startTime, correctAnswersCount, questions.length]);
+  }, [startTime, correctAnswersCount, questions.length, elapsedSeconds]); // Add elapsedSeconds dependency
 
 
   const handleAnswerSelect = (answer: string | number) => {
@@ -133,13 +174,6 @@ export default function Quiz() {
 
   const handleRestartQuiz = () => {
     loadQuestions(); // Reload questions and reset state
-  };
-
-   // Format time in MM:SS
-   const formatTime = (seconds: number): string => {
-    const minutes = Math.floor(seconds / 60);
-    const remainingSeconds = seconds % 60;
-    return `${minutes.toString().padStart(2, '0')}:${remainingSeconds.toString().padStart(2, '0')}`;
   };
 
 
@@ -244,10 +278,15 @@ export default function Quiz() {
     <Card className="w-full max-w-2xl mx-auto p-4 md:p-8 shadow-xl">
       <CardHeader>
         <CardTitle className="text-center text-xl md:text-2xl font-semibold mb-2">Daily Quiz</CardTitle>
-        <Progress value={progress} className="w-full h-2 mb-6" />
-        <p className="text-center text-sm text-muted-foreground mb-4">
-          Question {currentQuestionIndex + 1} of {questions.length}
-        </p>
+        <Progress value={progress} className="w-full h-2 mb-2" /> {/* Reduced mb */}
+         {/* Timer and Question Count Row */}
+        <div className="flex justify-between items-center text-sm text-muted-foreground mb-4">
+            <span>Question {currentQuestionIndex + 1} of {questions.length}</span>
+            <span className="flex items-center gap-1">
+                 <Clock className="h-4 w-4" />
+                 {formatTime(elapsedSeconds)} {/* Display Elapsed Time */}
+            </span>
+        </div>
         <h2 className="text-lg md:text-xl font-medium text-center min-h-[3em] flex items-center justify-center">{currentQuestion.question}</h2>
       </CardHeader>
       <CardContent>
@@ -317,3 +356,5 @@ export default function Quiz() {
     </Card>
   );
 }
+
+    
