@@ -1,4 +1,3 @@
-
 'use client';
 
 import type { QuizQuestion } from '@/lib/quizData';
@@ -321,7 +320,7 @@ export default function Quiz() {
                 : isChecked // If checked but wrong
                 ? 'border-red-500 bg-red-100 dark:bg-red-900/30 ring-2 ring-red-500' // Incorrect selected answer style
                 : 'border-border opacity-60' // Other incorrect options
-              : 'border-border hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2'; // Default style + focus
+              : 'border-border hover:bg-accent focus-visible:ring-2 focus-visible:ring-offset-2'; // Default style + focus
 
             return (
               // Use a div wrapping Label and RadioGroupItem for better layout control and styling consistency
@@ -371,5 +370,3 @@ export default function Quiz() {
     </Card>
   );
 }
-
-    
