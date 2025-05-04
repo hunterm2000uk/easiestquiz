@@ -20,6 +20,7 @@ const POINTS_PER_CORRECT = 10;
 const PERFECTION_BONUS = 50;
 const MAX_TIME_POINTS_FACTOR = 5; // Max time points = questions.length * this factor
 const TIME_DEDUCTION_PER_SECOND = 0.5;
+const INITIAL_TIME = 120; // 2 minutes in seconds
 
 export default function Quiz() {
   const [questions, setQuestions] = React.useState<QuizQuestion[]>([]);
@@ -31,105 +32,49 @@ export default function Quiz() {
   const [isLoading, setIsLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
   const [quizComplete, setQuizComplete] = React.useState(false);
-  const [startTime, setStartTime] = React.useState<number | null>(null);
-  const [endTime, setEndTime] = React.useState<number | null>(null);
-  const [elapsedSeconds, setElapsedSeconds] = React.useState(0); // State for elapsed time display
+  const [remainingTime, setRemainingTime] = React.useState(INITIAL_TIME); // Countdown state
   const [finalScore, setFinalScore] = React.useState<{
       baseScore: number;
       timeScore: number;
       perfectionBonus: number;
       totalScore: number;
-      elapsedTime: number;
+      elapsedTime: number; // Store elapsed time for display consistency
   } | null>(null);
 
   const timerIntervalRef = React.useRef<NodeJS.Timeout | null>(null); // Ref to hold interval ID
 
   // Format time in MM:SS
-  const formatTime = (seconds: number): string => {
-      const minutes = Math.floor(seconds / 60);
-      const remainingSeconds = seconds % 60;
-      return `${minutes.toString().padStart(2, '0')}:${remainingSeconds.toString().padStart(2, '0')}`;
+  const formatTime = (totalSeconds: number): string => {
+      const minutes = Math.floor(totalSeconds / 60);
+      const seconds = totalSeconds % 60;
+      return `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
   };
 
-
-  const loadQuestions = React.useCallback(async () => {
-      try {
-        setIsLoading(true);
-        setError(null);
-        setQuizComplete(false);
-        setCurrentQuestionIndex(0);
-        setCorrectAnswersCount(0);
-        setSelectedAnswer(null);
-        setShowFeedback(false);
-        setIsCorrect(null);
-        setStartTime(null);
-        setEndTime(null);
-        setFinalScore(null);
-        setElapsedSeconds(0); // Reset elapsed time
-        if (timerIntervalRef.current) { // Clear any existing timer
-            clearInterval(timerIntervalRef.current);
-            timerIntervalRef.current = null;
-        }
-
-
-        const fetchedQuestions = await fetchDailyQuizQuestions(10); // Fetch 10 questions
-        if (fetchedQuestions.length === 0) {
-            setError("No questions were loaded. Please try again later.");
-        } else {
-             // Shuffle options client-side to avoid hydration issues if necessary
-             // For now, assuming service shuffle is sufficient or called client-side
-            setQuestions(fetchedQuestions);
-            setStartTime(Date.now()); // Record start time *after* questions are set
-        }
-      } catch (err) {
-        console.error('Failed to fetch questions:', err);
-        setError('Failed to load quiz questions. Please try refreshing the page.');
-      } finally {
-        setIsLoading(false);
-      }
-    }, []); // Empty dependency array ensures this function is stable
-
-  React.useEffect(() => {
-    loadQuestions();
-  }, [loadQuestions]); // Run once on mount
-
-  // Timer Effect
-  React.useEffect(() => {
-      if (startTime && !quizComplete) {
-          timerIntervalRef.current = setInterval(() => {
-              setElapsedSeconds(prevSeconds => prevSeconds + 1);
-          }, 1000);
-      } else if (quizComplete && timerIntervalRef.current) {
-          clearInterval(timerIntervalRef.current); // Clear interval when quiz completes
+  const stopTimer = () => {
+      if (timerIntervalRef.current) {
+          clearInterval(timerIntervalRef.current);
           timerIntervalRef.current = null;
       }
+  };
 
-      // Cleanup function to clear interval on component unmount or when dependencies change
-      return () => {
-          if (timerIntervalRef.current) {
-              clearInterval(timerIntervalRef.current);
-          }
-      };
-  }, [startTime, quizComplete]); // Rerun effect if startTime or quizComplete changes
+  // Function to calculate score and end the quiz
+  const handleQuizEnd = React.useCallback((isTimeUp = false) => {
+      stopTimer(); // Ensure timer is stopped
+      if (quizComplete) return; // Prevent multiple calculations
 
+      setQuizComplete(true);
 
-  const calculateScore = React.useCallback(() => {
-      if (!startTime || !questions.length) return;
-
-      const currentEndTime = Date.now();
-      setEndTime(currentEndTime);
-
-       // Use elapsedSeconds state directly for consistency, though recalculating is also fine
-       const finalElapsedTime = elapsedSeconds; // Use state value at the time of completion
-       // Or: const finalElapsedTime = Math.round((currentEndTime - startTime) / 1000);
+      const elapsedTime = isTimeUp ? INITIAL_TIME : INITIAL_TIME - remainingTime;
+      const finalElapsedTime = Math.max(0, elapsedTime); // Ensure elapsed time isn't negative
 
       const baseScore = correctAnswersCount * POINTS_PER_CORRECT;
 
+      // Calculate time score based on elapsed time
       const maxTimePoints = questions.length * MAX_TIME_POINTS_FACTOR;
       const timeScoreRaw = maxTimePoints - (finalElapsedTime * TIME_DEDUCTION_PER_SECOND);
       const timeScore = Math.max(0, Math.round(timeScoreRaw)); // Ensure time score isn't negative
 
-      const isPerfect = correctAnswersCount === questions.length;
+      const isPerfect = correctAnswersCount === questions.length && !isTimeUp; // Perfection only if not timed out
       const perfectionBonus = isPerfect ? PERFECTION_BONUS : 0;
 
       const totalScore = baseScore + timeScore + perfectionBonus;
@@ -139,10 +84,71 @@ export default function Quiz() {
           timeScore,
           perfectionBonus,
           totalScore,
-          elapsedTime: finalElapsedTime,
+          elapsedTime: finalElapsedTime, // Store the calculated elapsed time
       });
-       setQuizComplete(true); // Set quiz complete *after* calculation
-  }, [startTime, correctAnswersCount, questions.length, elapsedSeconds]); // Add elapsedSeconds dependency
+
+  }, [correctAnswersCount, questions.length, remainingTime, quizComplete]); // Added quizComplete
+
+
+  const loadQuestions = React.useCallback(async () => {
+      try {
+        stopTimer(); // Ensure previous timer is stopped
+        setIsLoading(true);
+        setError(null);
+        setQuizComplete(false);
+        setCurrentQuestionIndex(0);
+        setCorrectAnswersCount(0);
+        setSelectedAnswer(null);
+        setShowFeedback(false);
+        setIsCorrect(null);
+        setFinalScore(null);
+        setRemainingTime(INITIAL_TIME); // Reset timer
+
+        const fetchedQuestions = await fetchDailyQuizQuestions(10); // Fetch 10 questions
+        if (fetchedQuestions.length === 0) {
+            setError("No questions were loaded. Please try again later.");
+             setIsLoading(false); // Stop loading if no questions
+        } else {
+            setQuestions(fetchedQuestions);
+             // Start timer only after questions are loaded and state is ready
+            setIsLoading(false);
+            // Timer start moved to useEffect based on isLoading
+        }
+      } catch (err) {
+        console.error('Failed to fetch questions:', err);
+        setError('Failed to load quiz questions. Please try refreshing the page.');
+        setIsLoading(false); // Stop loading on error
+      }
+    }, []); // Removed handleQuizEnd dependency
+
+  React.useEffect(() => {
+    loadQuestions();
+  }, [loadQuestions]); // Run once on mount
+
+  // Timer Countdown Effect
+  React.useEffect(() => {
+      // Start timer only when not loading and quiz is not complete
+      if (!isLoading && !quizComplete) {
+          timerIntervalRef.current = setInterval(() => {
+              setRemainingTime(prevTime => prevTime - 1);
+          }, 1000);
+      } else {
+          stopTimer(); // Stop timer if loading or quiz completed
+      }
+
+      // Cleanup function to clear interval
+      return () => {
+          stopTimer();
+      };
+  }, [isLoading, quizComplete]); // Rerun effect if isLoading or quizComplete changes
+
+  // Effect to check if time has run out
+  React.useEffect(() => {
+    if (remainingTime <= 0 && !quizComplete) {
+        console.log("Time's up!");
+        handleQuizEnd(true); // Indicate that time ran out
+    }
+  }, [remainingTime, quizComplete, handleQuizEnd]);
 
 
   const handleAnswerSelect = (answer: string | number) => {
@@ -166,8 +172,8 @@ export default function Quiz() {
         setIsCorrect(null);
         setSelectedAnswer(null);
       } else {
-        // Quiz finished, calculate final score
-        calculateScore();
+        // Last question answered, end the quiz normally
+        handleQuizEnd(false);
       }
     }, 1500); // Delay for 1.5 seconds
   };
@@ -206,7 +212,7 @@ export default function Quiz() {
           <AlertCircle className="h-4 w-4" />
           <AlertTitle>Error</AlertTitle>
           <AlertDescription>{error}</AlertDescription>
-           <Button onClick={() => window.location.reload()} className="mt-4">Retry</Button>
+           <Button onClick={handleRestartQuiz} className="mt-4">Retry</Button> {/* Changed to Restart */}
         </Alert>
       </div>
     );
@@ -257,6 +263,7 @@ export default function Quiz() {
             )}
             <div className="flex justify-between items-center p-3 bg-secondary rounded-lg mt-4">
                 <span className="flex items-center gap-1"><Clock className="h-4 w-4 text-muted-foreground"/> Time Taken:</span>
+                {/* Display time taken based on stored elapsed time */}
                 <Badge variant="outline">{formatTime(finalScore.elapsedTime)}</Badge>
             </div>
           <Separator className="my-4" />
@@ -268,6 +275,11 @@ export default function Quiz() {
         </CardFooter>
       </Card>
     );
+  }
+
+  // Ensure currentQuestion is defined before accessing properties
+  if (questions.length === 0 || currentQuestionIndex >= questions.length) {
+     return <div>Loading question...</div>; // Or another placeholder
   }
 
   const currentQuestion = questions[currentQuestionIndex];
@@ -282,9 +294,12 @@ export default function Quiz() {
          {/* Timer and Question Count Row */}
         <div className="flex justify-between items-center text-sm text-muted-foreground mb-4">
             <span>Question {currentQuestionIndex + 1} of {questions.length}</span>
-            <span className="flex items-center gap-1">
+            <span className={cn(
+                 "flex items-center gap-1",
+                 remainingTime <= 10 && !quizComplete ? "text-destructive font-bold" : "" // Highlight timer when low
+             )}>
                  <Clock className="h-4 w-4" />
-                 {formatTime(elapsedSeconds)} {/* Display Elapsed Time */}
+                 {formatTime(remainingTime)} {/* Display Remaining Time */}
             </span>
         </div>
         <h2 className="text-lg md:text-xl font-medium text-center min-h-[3em] flex items-center justify-center">{currentQuestion.question}</h2>
@@ -319,13 +334,13 @@ export default function Quiz() {
               )}>
                 <RadioGroupItem
                   value={optionValue}
-                  id={optionValue}
+                  id={`${optionValue}-${index}`} // Ensure unique ID for labels
                   className="absolute top-4 left-4 shrink-0 peer" // Use peer for label association
                   aria-label={`Select option ${option}`}
                   disabled={showFeedback} // Ensure item itself is disabled
                  />
                 <Label
-                    htmlFor={optionValue}
+                    htmlFor={`${optionValue}-${index}`} // Ensure unique ID for labels
                     className="flex-1 text-sm pl-6 peer-disabled:cursor-default" // Use pl for spacing, associate with peer
                 >
                     {option}
