@@ -3,7 +3,7 @@
 import type { QuizQuestion } from '@/lib/quizData';
 import { fetchDailyQuizQuestions } from '@/lib/quizService';
 import { cn } from '@/lib/utils';
-import { CheckCircle, XCircle, AlertCircle, Loader2 } from 'lucide-react';
+import { CheckCircle, XCircle, AlertCircle } from 'lucide-react';
 import * as React from 'react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
