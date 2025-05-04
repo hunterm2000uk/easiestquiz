@@ -165,6 +165,7 @@ export default function Quiz() {
 
     // Delay before moving to the next question or completing the quiz
     setTimeout(() => {
+      // Check if it's the last question
       if (currentQuestionIndex < questions.length - 1) {
         setCurrentQuestionIndex(currentQuestionIndex + 1);
         setShowFeedback(false);
