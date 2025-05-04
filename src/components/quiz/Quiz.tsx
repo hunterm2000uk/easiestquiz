@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState, useEffect, useCallback } from 'react';
@@ -82,6 +83,8 @@ const Quiz = () => {
     if (showFeedback) return; // Don't allow changes after feedback is shown
 
     const currentQuestion = questions[currentQuestionIndex];
+    if (!currentQuestion) return; // Safeguard
+
     setSelectedAnswer(answer); // For visual feedback on MCQ
 
     const correct = answer === currentQuestion.correctAnswer;
@@ -107,7 +110,9 @@ const Quiz = () => {
     setTimeout(() => {
       goToNextQuestion();
       setShowFeedback(false); // Reset feedback visibility for next question
-      if (!quizFinished) { // Only resume timer if quiz is not finished
+      // Check if quiz is finished *after* goToNextQuestion potentially updates it
+       const isFinished = currentQuestionIndex >= questions.length - 1;
+      if (!isFinished && !timeUp) { // Only resume timer if quiz is not finished and time is not up
            startTimer(); // Resume timer after feedback
       }
     }, 1500); // Wait 1.5 seconds before moving on
@@ -168,13 +173,16 @@ const Quiz = () => {
     return (
        <Card className="w-full max-w-2xl p-4 md:p-8 shadow-xl">
             <CardContent className="flex flex-col items-center justify-center space-y-4 min-h-[400px]">
-                <Skeleton className="h-8 w-3/4" /> {/* Header Placeholder */}
+                <Skeleton className="h-8 w-3/4 mb-2" /> {/* Header Placeholder */}
                  <Skeleton className="h-4 w-1/2 mb-6" /> {/* Progress Placeholder */}
                 <Skeleton className="h-10 w-full mb-6" /> {/* Question Placeholder */}
-                <Skeleton className="h-12 w-full" /> {/* Option 1 */}
-                <Skeleton className="h-12 w-full" /> {/* Option 2 */}
-                 <Skeleton className="h-12 w-full" /> {/* Option 3 */}
-                 <Skeleton className="h-12 w-full" /> {/* Option 4 */}
+                 {/* Simulate option placeholders */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 w-full">
+                  <Skeleton className="h-12 w-full" />
+                  <Skeleton className="h-12 w-full" />
+                  <Skeleton className="h-12 w-full" />
+                  <Skeleton className="h-12 w-full" />
+                 </div>
             </CardContent>
         </Card>
     );
@@ -194,7 +202,8 @@ const Quiz = () => {
     return <QuizComplete score={score} totalQuestions={questions.length} onRestart={restartQuiz} timeUp={timeUp}/>;
   }
 
-  if (questions.length === 0) {
+  // Added check for empty questions *after* loading and error checks
+   if (questions.length === 0) {
        return (
             <Alert className="w-full max-w-md">
                 <AlertCircle className="h-4 w-4" />
@@ -206,6 +215,27 @@ const Quiz = () => {
 
 
   const currentQuestion = questions[currentQuestionIndex];
+
+  // Add a safeguard: Ensure currentQuestion exists before rendering
+  // This handles edge cases during transitions or if questions array/index gets into a weird state
+  if (!currentQuestion) {
+     // Show skeleton again or a simple loading text if currentQuestion is unexpectedly undefined
+     return (
+       <Card className="w-full max-w-2xl p-4 md:p-8 shadow-xl">
+            <CardContent className="flex flex-col items-center justify-center space-y-4 min-h-[400px]">
+                <Skeleton className="h-8 w-3/4 mb-2" />
+                 <Skeleton className="h-4 w-1/2 mb-6" />
+                <Skeleton className="h-10 w-full mb-6" />
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 w-full">
+                  <Skeleton className="h-12 w-full" />
+                  <Skeleton className="h-12 w-full" />
+                  <Skeleton className="h-12 w-full" />
+                  <Skeleton className="h-12 w-full" />
+                 </div>
+            </CardContent>
+        </Card>
+     );
+  }
 
 
   return (
@@ -242,3 +272,4 @@ const Quiz = () => {
 };
 
 export default Quiz;
+
