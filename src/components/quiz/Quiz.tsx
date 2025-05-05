@@ -1,3 +1,4 @@
+// src/components/quiz/Quiz.tsx
 'use client';
 
 import type { QuizQuestion } from '@/lib/quizData';
@@ -13,7 +14,7 @@ import { Label } from '@/components/ui/label';
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Separator } from "@/components/ui/separator";
+import { Separator } from "@/components/ui/separator"; // Import Separator
 import { useToast } from "@/hooks/use-toast"; // Import useToast
 
 const POINTS_PER_CORRECT = 10;
@@ -23,6 +24,7 @@ const TIME_DEDUCTION_PER_SECOND = 0.5;
 const INITIAL_TIME = 120; // 2 minutes in seconds
 
 // Simple function to play audio - requires sound files in public/sounds/
+// Ensure files 'correct.mp3' and 'incorrect.mp3' exist in the public/sounds directory.
 const playSound = (soundFile: string) => {
   // Check if window is defined (runs only on client)
   if (typeof window !== 'undefined') {
@@ -73,25 +75,23 @@ export default function Quiz() {
       if (quizComplete) return; // Prevent multiple calculations
       stopTimer(); // Ensure timer is stopped
 
+      // Capture the current state at the moment of quiz end
+      const finalCorrectCount = correctAnswersCount; // Use state directly
+      const finalRemainingTime = remainingTime;     // Use state directly
 
-      // Capture the state *before* setting quizComplete to true
-      const currentCorrectCount = correctAnswersCount;
-      const currentRemainingTime = remainingTime;
+      setQuizComplete(true); // Mark quiz as complete IMMEDIATELY
 
-      setQuizComplete(true); // Mark quiz as complete
-
-
-      const elapsedTime = isTimeUp ? INITIAL_TIME : INITIAL_TIME - currentRemainingTime;
+      const elapsedTime = isTimeUp ? INITIAL_TIME : INITIAL_TIME - finalRemainingTime;
       const finalElapsedTime = Math.max(0, elapsedTime); // Ensure elapsed time isn't negative
 
-      const baseScore = currentCorrectCount * POINTS_PER_CORRECT;
+      const baseScore = finalCorrectCount * POINTS_PER_CORRECT;
 
       // Calculate time score based on elapsed time
       const maxTimePoints = questions.length * MAX_TIME_POINTS_FACTOR;
       const timeScoreRaw = maxTimePoints - (finalElapsedTime * TIME_DEDUCTION_PER_SECOND);
       const timeScore = Math.max(0, Math.round(timeScoreRaw)); // Ensure time score isn't negative
 
-      const isPerfect = currentCorrectCount === questions.length && !isTimeUp; // Perfection only if not timed out
+      const isPerfect = finalCorrectCount === questions.length && !isTimeUp; // Perfection only if not timed out
       const perfectionBonus = isPerfect ? PERFECTION_BONUS : 0;
 
       const totalScore = baseScore + timeScore + perfectionBonus;
@@ -110,7 +110,7 @@ export default function Quiz() {
            description: `You scored ${totalScore} points.`,
        });
 
-  }, [correctAnswersCount, questions.length, remainingTime, quizComplete, stopTimer, toast]); // Added dependencies
+  }, [correctAnswersCount, questions.length, remainingTime, quizComplete, stopTimer, toast]); // Added correctAnswersCount, remainingTime, quizComplete
 
 
   const loadQuestions = React.useCallback(async () => {
@@ -133,9 +133,8 @@ export default function Quiz() {
              setIsLoading(false); // Stop loading if no questions
         } else {
             setQuestions(fetchedQuestions);
-             // Start timer only after questions are loaded and state is ready
+             // Timer start logic moved to useEffect based on isLoading and quizComplete
             setIsLoading(false);
-            // Timer start moved to useEffect based on isLoading
         }
       } catch (err) {
         console.error('Failed to fetch questions:', err);
@@ -160,44 +159,56 @@ export default function Quiz() {
     return () => {
         document.removeEventListener('click', enableAudio);
         document.removeEventListener('touchstart', enableAudio);
+        stopTimer(); // Ensure timer is cleared on unmount
     };
-  }, [loadQuestions]); // Run once on mount
+  }, [loadQuestions, stopTimer]); // Added stopTimer to dependencies
 
   // Timer Countdown Effect
   React.useEffect(() => {
       // Start timer only when not loading and quiz is not complete
       if (!isLoading && !quizComplete) {
+          // Clear any existing interval before starting a new one
+          if (timerIntervalRef.current) {
+             clearInterval(timerIntervalRef.current);
+          }
           timerIntervalRef.current = setInterval(() => {
               setRemainingTime(prevTime => {
-                // Ensure time doesn't go below zero before triggering end
                 if (prevTime <= 1) {
-                    // Directly call handleQuizEnd when time reaches 0
-                    // Check quizComplete again inside to avoid race condition
-                    if (!quizComplete) {
-                        handleQuizEnd(true); // Indicate time ran out
-                    }
-                    return 0; // Return 0 to update state immediately
+                    // Use a callback with setQuizComplete to ensure the latest state
+                    setQuizComplete(currentQuizCompleteState => {
+                        if (!currentQuizCompleteState) {
+                            // handleQuizEnd needs access to the *current* correctAnswersCount
+                            // We pass it directly or ensure handleQuizEnd reads the latest state
+                            handleQuizEnd(true); // Indicate time ran out
+                        }
+                        return true; // Update quizComplete state
+                    });
+                    clearInterval(timerIntervalRef.current!); // Stop the interval
+                    timerIntervalRef.current = null;
+                    return 0; // Set time to 0
                 }
                 return prevTime - 1; // Decrement time
               });
           }, 1000);
       } else {
-          stopTimer(); // Stop timer if loading or quiz completed
+          // If loading or quiz is already complete, ensure the timer is stopped.
+          stopTimer();
       }
 
-      // Cleanup function to clear interval
+      // Cleanup function to clear interval when dependencies change or component unmounts
       return () => {
           stopTimer();
       };
-      // Added handleQuizEnd and quizComplete as dependencies
+      // Added handleQuizEnd as a dependency because it's used inside
   }, [isLoading, quizComplete, handleQuizEnd, stopTimer]);
 
 
-  // Effect to check if time has run out (redundant due to logic in setInterval, but safe fallback)
+  // Effect to check if time has run out (now redundant due to logic in setInterval, but safe fallback)
   React.useEffect(() => {
     if (remainingTime <= 0 && !quizComplete) {
-        console.log("Time's up! (Fallback check)");
-        handleQuizEnd(true); // Indicate that time ran out
+        // console.log("Time's up! (Fallback check triggered)"); // Keep for debugging if needed
+        // Ensure quiz end logic runs if the interval somehow missed it
+         handleQuizEnd(true);
     }
   }, [remainingTime, quizComplete, handleQuizEnd]);
 
@@ -213,19 +224,29 @@ export default function Quiz() {
 
     setIsCorrect(correct);
 
+    let scoreChange = 0;
     if (correct) {
-      setCorrectAnswersCount(prevCount => prevCount + 1);
+      scoreChange = 1; // We'll update the count *after* this handler resolves if needed
       if (!isMuted) playSound('correct.mp3'); // Play correct sound
-      // Add a subtle animation/effect for correct answer if desired
     } else {
       if (!isMuted) playSound('incorrect.mp3'); // Play incorrect sound
-       // Add subtle animation/effect for incorrect answer if desired
     }
 
-    // Delay logic
+    // Update correct answer count *after* determining correctness for this question
+    // Use functional update to ensure we're working with the latest count
+    if (correct) {
+        setCorrectAnswersCount(prevCount => prevCount + 1);
+    }
+
+
+    // Delay logic before moving to the next question or ending the quiz
     setTimeout(() => {
-      // Check for completion inside timeout to ensure state is updated
-       if (quizComplete) return; // If quiz ended due to time, don't proceed
+       // Check quizComplete *again* inside the timeout, as it might have been set by the timer
+        if (quizComplete) {
+            // If the quiz was completed (e.g., by timeout) while waiting for feedback, don't proceed further.
+             // The score calculation in handleQuizEnd already captured the state at the moment of completion.
+             return;
+         }
 
       if (currentQuestionIndex < questions.length - 1) {
         setCurrentQuestionIndex(prevIndex => prevIndex + 1);
@@ -234,7 +255,8 @@ export default function Quiz() {
         setSelectedAnswer(null);
       } else {
         // Last question answered, end the quiz normally
-        handleQuizEnd(false);
+         // Pass false to indicate it wasn't due to time running out
+         handleQuizEnd(false);
       }
     }, 1500); // Delay for 1.5 seconds
   };
@@ -309,29 +331,36 @@ export default function Quiz() {
       <Card className="w-full max-w-lg mx-auto p-4 md:p-8 shadow-2xl text-center bg-gradient-to-b from-background to-secondary/70 border-primary/50 border-2">
         <CardHeader>
           <CardTitle className="text-2xl md:text-3xl font-bold mb-4 flex items-center justify-center gap-2 animate-pulse">
+             {/* Conditional Trophy Icon based on perfection */}
              <Trophy className={`h-10 w-10 ${isPerfect ? 'text-yellow-400 filter drop-shadow(0 0 5px #facc15)' : 'text-primary filter drop-shadow(0 0 3px #3498db)'}`} />
              Quiz Complete!
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4 text-base md:text-lg">
+            {/* Correct Answers Display */}
            <div className="flex justify-between items-center p-3 bg-secondary/80 rounded-lg shadow-inner">
               <span>Correct Answers:</span>
+              {/* Badge color depends on perfection */}
               <Badge variant={isPerfect ? "success" : "secondary"} className="text-base">{correctAnswersCount} / {questions.length}</Badge>
           </div>
+            {/* Base Score Display */}
            <div className="flex justify-between items-center p-3 bg-secondary/80 rounded-lg shadow-inner">
                 <span>Base Score:</span>
                 <Badge variant="secondary" className="text-base">{finalScore.baseScore} pts</Badge>
             </div>
+            {/* Time Bonus Display */}
              <div className="flex justify-between items-center p-3 bg-secondary/80 rounded-lg shadow-inner">
                 <span>Time Bonus:</span>
                  <Badge variant="secondary" className="text-base">+{finalScore.timeScore} pts</Badge>
             </div>
+            {/* Perfection Bonus (Conditional) */}
             {isPerfect && (
                 <div className="flex justify-between items-center p-3 bg-green-100 dark:bg-green-900/30 rounded-lg text-green-700 dark:text-green-300 shadow-md border border-green-300">
                     <span className="font-semibold">Perfection Bonus:</span>
                     <Badge variant="outline" className="border-green-500 text-green-700 dark:text-green-300 font-bold text-base animate-feedback-pop">+{finalScore.perfectionBonus} pts</Badge>
                 </div>
             )}
+            {/* Time Taken Display */}
             <div className="flex justify-between items-center p-3 bg-secondary/80 rounded-lg shadow-inner mt-4">
                 <span className="flex items-center gap-1 text-muted-foreground"><Clock className="h-4 w-4"/> Time Taken:</span>
                 {/* Display time taken based on stored elapsed time */}
@@ -342,6 +371,7 @@ export default function Quiz() {
           <p className="text-4xl md:text-5xl font-bold text-primary drop-shadow-md mb-6">{finalScore.totalScore}</p>
         </CardContent>
         <CardFooter className="flex justify-center pt-6">
+            {/* Restart Button */}
            <Button onClick={handleRestartQuiz} size="lg" className="shadow-lg transform hover:scale-105 transition-transform duration-200">
               <Trophy className="mr-2 h-5 w-5"/> Play Again
             </Button>
@@ -352,11 +382,21 @@ export default function Quiz() {
 
   // Ensure currentQuestion is defined before accessing properties
   if (questions.length === 0 || currentQuestionIndex >= questions.length) {
-     // Use Skeleton here as well for consistency during brief loading moments
+     // Should ideally not be reached if loading/error/empty states are handled,
+     // but provides a fallback skeleton.
      return (
         <Card className="w-full max-w-2xl mx-auto p-4 md:p-8 shadow-xl bg-gradient-to-br from-secondary to-muted/50">
-            <CardContent className="flex items-center justify-center min-h-[300px]">
-                <Skeleton className="h-8 w-1/2 bg-muted/70" />
+            <CardHeader>
+             <Skeleton className="h-8 w-3/4 mx-auto mb-6 bg-muted/70" />
+             <Skeleton className="h-2 w-full mb-4 bg-muted/70" />
+             <Skeleton className="h-4 w-1/2 mx-auto mb-4 bg-muted/70" />
+            </CardHeader>
+            <CardContent className="flex flex-col items-center justify-center space-y-6 min-h-[300px]">
+                <Skeleton className="h-10 w-full text-center mb-6 bg-muted/70" />
+                <Skeleton className="h-12 w-full bg-muted/70" />
+                <Skeleton className="h-12 w-full bg-muted/70" />
+                 <Skeleton className="h-12 w-full bg-muted/70" />
+                 <Skeleton className="h-12 w-full bg-muted/70" />
             </CardContent>
              <CardFooter className="pt-6">
                 <Skeleton className="h-10 w-10 rounded-full bg-muted/70 ml-auto"/>
@@ -379,7 +419,8 @@ export default function Quiz() {
             <Badge variant="outline">Question {currentQuestionIndex + 1} / {questions.length}</Badge>
             <Badge variant={remainingTime <= 10 && !quizComplete ? "destructive" : "outline"} className={cn(
                  "flex items-center gap-1 transition-colors duration-300",
-                 remainingTime <= 10 && !quizComplete ? "animate-pulse" : "" // Pulse when low
+                 // Pulse animation when time is low and quiz is not complete
+                 remainingTime <= 10 && !quizComplete ? "animate-pulse" : ""
              )}>
                  <Clock className="h-4 w-4" />
                  {formatTime(remainingTime)} {/* Display Remaining Time */}
@@ -410,16 +451,18 @@ export default function Quiz() {
                 feedbackClass = 'border-border opacity-60 cursor-default'; // Other incorrect options faded
               }
             } else if (isChecked) {
-                feedbackClass = 'ring-2 ring-primary border-primary bg-accent/30'; // Indicate selection before feedback
+                // Style for the selected item before feedback is shown
+                feedbackClass = 'ring-2 ring-primary border-primary bg-accent/30';
             }
 
 
             return (
               // Use a div wrapping Label and RadioGroupItem for better layout control and styling consistency
-              <div key={index} className={cn(
+              <div key={`${currentQuestionIndex}-${index}`} className={cn( // Ensure key is unique across questions
                   "relative flex items-center space-x-3 p-4 border rounded-lg transition-all duration-300 ease-in-out shadow-sm",
                    feedbackClass,
-                   (showFeedback || quizComplete) ? 'cursor-default' : 'cursor-pointer transform hover:scale-[1.03] focus-within:scale-[1.03]', // Subtle hover/focus scale only when active
+                   // Apply cursor and hover effects only when interactive
+                   (showFeedback || quizComplete) ? 'cursor-default' : 'cursor-pointer transform hover:scale-[1.03] focus-within:scale-[1.03]',
               )}>
                 <RadioGroupItem
                   value={optionValue}
@@ -431,9 +474,10 @@ export default function Quiz() {
                 <Label
                     htmlFor={`${optionValue}-${index}-${currentQuestionIndex}`} // Match ID
                     className={cn(
-                        "flex-1 text-sm pl-6",
+                        "flex-1 text-sm pl-6", // Use pl for spacing, associate with peer
+                         // Adjust cursor based on state
                          (showFeedback || quizComplete) ? 'cursor-default' : 'cursor-pointer peer-disabled:cursor-default'
-                    )} // Use pl for spacing, associate with peer
+                    )}
                 >
                     {option}
                 </Label>
@@ -441,13 +485,16 @@ export default function Quiz() {
                 {showFeedback && (
                     <div className="absolute top-1/2 right-4 transform -translate-y-1/2">
                         {isChecked && isCorrect && (
+                            // Correct selection icon
                             <CheckCircle className="h-5 w-5 text-green-600 animate-feedback-pop" />
                         )}
                         {isChecked && !isCorrect && (
+                            // Incorrect selection icon
                              <XCircle className="h-5 w-5 text-red-600 animate-feedback-pop" />
                         )}
                          {!isChecked && isCorrectOption && (
-                            <CheckCircle className="h-5 w-5 text-green-600 opacity-50" /> // Show faded checkmark for the actual correct answer if user chose wrong
+                            // Icon indicating the correct answer if user chose wrong
+                            <CheckCircle className="h-5 w-5 text-green-600 opacity-50" />
                          )}
                     </div>
                 )}
@@ -467,9 +514,12 @@ export default function Quiz() {
                 className="rounded-full text-muted-foreground hover:text-foreground hover:bg-accent/70 transition-colors"
             >
                <Volume2 className={`h-5 w-5 ${isMuted ? 'opacity-50' : ''}`} />
+                {/* Optional: Add visual indicator for mute state like a small X */}
                 {isMuted && <XCircle className="h-3 w-3 absolute bottom-0 right-0 text-destructive" />}
            </Button>
        </CardFooter>
     </Card>
   );
 }
+
+    
