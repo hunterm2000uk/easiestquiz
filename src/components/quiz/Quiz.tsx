@@ -78,13 +78,14 @@ export default function Quiz() {
       // Capture the current state at the moment of quiz end
       const finalCorrectCount = correctAnswersCount; // Use state directly
       const finalRemainingTime = remainingTime;     // Use state directly
-
+      const baseScore = finalCorrectCount * POINTS_PER_CORRECT;
+      
       setQuizComplete(true); // Mark quiz as complete IMMEDIATELY
 
       const elapsedTime = isTimeUp ? INITIAL_TIME : INITIAL_TIME - finalRemainingTime;
       const finalElapsedTime = Math.max(0, elapsedTime); // Ensure elapsed time isn't negative
 
-      const baseScore = finalCorrectCount * POINTS_PER_CORRECT;
+      
 
       // Calculate time score based on elapsed time
       const maxTimePoints = questions.length * MAX_TIME_POINTS_FACTOR;
@@ -258,7 +259,7 @@ export default function Quiz() {
          // Pass false to indicate it wasn't due to time running out
          handleQuizEnd(false);
       }
-    }, 1500); // Delay for 1.5 seconds
+    }, 500); // Delay for 0.5 seconds
   };
 
 
