@@ -90,13 +90,29 @@ export default {
         // Added animation for feedback icons
         feedbackPop: {
           '0%, 100%': { transform: 'scale(1)' },
-          '50%': { transform: 'scale(1.2)' },
+          '50%': { transform: 'scale(1.25)' }, // Slightly increased scale
         },
+         // Added animation for correct answer glow
+        correctAnswer: {
+           '0%': { transform: 'scale(1)', boxShadow: '0 0 0px hsl(var(--success) / 0.5)' },
+           '50%': { transform: 'scale(1.03)', boxShadow: '0 0 10px 3px hsl(var(--success) / 0.5)' },
+           '100%': { transform: 'scale(1)', boxShadow: '0 0 0px hsl(var(--success) / 0.5)' },
+        },
+         // Added subtle shake animation for incorrect answer
+        incorrectAnswer: {
+            '0%, 100%': { transform: 'translateX(0)' },
+            '20%': { transform: 'translateX(-5px)' },
+            '40%': { transform: 'translateX(5px)' },
+            '60%': { transform: 'translateX(-3px)' },
+            '80%': { transform: 'translateX(3px)' },
+        }
   		},
   		animation: {
   			'accordion-down': 'accordion-down 0.2s ease-out',
   			'accordion-up': 'accordion-up 0.2s ease-out',
         'feedback-pop': 'feedbackPop 0.3s ease-out', // Added animation
+        'correct-answer': 'correctAnswer 0.5s ease-out', // Added correct answer animation
+        'incorrect-answer': 'incorrectAnswer 0.4s ease-in-out', // Added incorrect answer animation
   		}
   	}
   },
